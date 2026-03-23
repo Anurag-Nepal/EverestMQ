@@ -1,6 +1,6 @@
-# EverestMQ Phase 1 - Production-Grade Single-Node MQ
+# EverestMQ Phase 1 - Production-Grade Single-Module MQ
 
-EverestMQ is a high-performance, single-node message queue system built with Java and Netty. It follows a Kafka-style append-only log architecture for message persistence and consumer offset management.
+EverestMQ is a high-performance, single-node message queue system built with Java and Netty. It has been refactored into a single Maven module for easier integration and deployment.
 
 ## Architecture Diagram
 
@@ -11,6 +11,18 @@ graph LR
     C[Consumer] -->|FETCH| B
     B -->|Read| L
     C -->|Commit Offset| O[Offset Storage]
+```
+
+## Project Structure
+```text
+everestmq/
+  ├─ src/main/java/com/everestmq/
+  │    ├─ broker/    # Broker server logic
+  │    ├─ client/    # Producer and Consumer APIs
+  │    └─ commons/   # Shared protocol and config
+  ├─ src/main/resources/
+  │    └─ application.properties
+  └─ pom.xml
 ```
 
 ## Data Flow
@@ -24,9 +36,6 @@ graph LR
 Data is stored in the `everestmq_data/` directory by default:
 - `<topic>.log`: Append-only binary log containing messages.
 - `<topic>-offset.dat`: Persistent storage for consumer offsets (atomic write).
-
-### Message Log Format
-`[4B magic][8B offset][8B timestampMs][4B keyLen][NB key][4B payloadLen][NB payload][1B newline]`
 
 ## Configuration Guide
 
@@ -47,6 +56,15 @@ Configuration is handled via `application.properties`, environment variables (e.
 
 ## Usage Guide
 
+### Maven Dependency
+```xml
+<dependency>
+    <groupId>com.everestmq</groupId>
+    <artifactId>everestmq</artifactId>
+    <version>0.1.0-SNAPSHOT</version>
+</dependency>
+```
+
 ### Running the Broker
 ```java
 EverestBrokerServer server = new EverestBrokerServer();
@@ -56,9 +74,6 @@ server.start();
 ### Producing Messages
 ```java
 Properties config = new Properties();
-config.setProperty("everestmq.broker.host", "localhost");
-config.setProperty("everestmq.broker.port", "9876");
-
 try (EverestProducer producer = new EverestProducer(config)) {
     producer.send("my-topic", "key".getBytes(), "Hello EverestMQ".getBytes());
 }
@@ -67,19 +82,13 @@ try (EverestProducer producer = new EverestProducer(config)) {
 ### Consuming Messages
 ```java
 Properties config = new Properties();
-config.setProperty("everestmq.consumer.batch.size", "5");
-
 try (EverestConsumer consumer = new EverestConsumer(config)) {
     consumer.subscribe("my-topic");
     List<EverestMessage> batch = consumer.poll();
-    for (EverestMessage msg : batch) {
-        System.out.println("Received: " + msg.getPayload());
-    }
+    // process batch
 }
 ```
 
-## Maven Metadata
-- **Name**: EverestMQ
-- **Description**: Production-grade, single-node message queue.
-- **License**: Apache License 2.0
-- **Artifacts**: Main JAR, Source JAR, Javadoc JAR.
+## Build and Deploy
+- **Build Fat Jar**: `mvn clean package`
+- **Deploy to GitHub Packages**: `mvn deploy`

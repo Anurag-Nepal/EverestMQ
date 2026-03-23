@@ -6,10 +6,13 @@
         <sourceOutputDir name="target/generated-sources/annotations" />
         <sourceTestOutputDir name="target/generated-test-sources/test-annotations" />
         <outputRelativeToContentRoot value="true" />
-        <module name="everestmq-commons" />
-        <module name="everestmq-broker" />
-        <module name="everestmq-client" />
+        <module name="everestmq-parent" />
       </profile>
     </annotationProcessing>
+    <bytecodeTargetLevel>
+      <module name="everestmq-broker" target="17" />
+      <module name="everestmq-client" target="17" />
+      <module name="everestmq-commons" target="17" />
+    </bytecodeTargetLevel>
   </component>
 </project>
