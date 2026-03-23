@@ -11,7 +11,7 @@
 
     <name>EverestMQ</name>
     <description>A production-grade, single-node message queue system built with Java and Netty.</description>
-    <url>https://github.com/everestmq/everestmq</url>
+    <url>https://github.com/Anurag-Nepal/everestMQ</url>
 
     <licenses>
         <license>
@@ -22,8 +22,8 @@
 
     <developers>
         <developer>
-            <name>EverestMQ Team</name>
-            <email>team@everestmq.com</email>
+            <name>Anurag Nepal</name>
+            <email>anuragnepal2062@gmail.com</email>
         </developer>
     </developers>
 
@@ -166,4 +166,11 @@
             </plugin>
         </plugins>
     </build>
+    <distributionManagement>
+        <repository>
+            <id>github</id>
+            <name>Anurag-Nepal Apache Maven Packages</name>
+            <url>https://maven.pkg.github.com/Anurag-Nepal/EverestMQ</url>
+        </repository>
+    </distributionManagement>
 </project>

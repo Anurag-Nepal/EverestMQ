@@ -21,7 +21,7 @@ graph LR
 5. **Offset Lifecycle**: Consumer tracks its current offset and commits it to a local `.dat` file after successful processing.
 
 ## Storage Structure
-Data is stored in the `everestmq-data/` directory by default:
+Data is stored in the `everestmq_data/` directory by default:
 - `<topic>.log`: Append-only binary log containing messages.
 - `<topic>-offset.dat`: Persistent storage for consumer offsets (atomic write).
 
@@ -36,7 +36,7 @@ Configuration is handled via `application.properties`, environment variables (e.
 |----------|---------|-------------|
 | `everestmq.broker.host` | `localhost` | Broker host for clients |
 | `everestmq.broker.port` | `9876` | Broker listening port |
-| `everestmq.data.dir` | `everestmq-data` | Directory for log and offset storage |
+| `everestmq.data.dir` | `everestmq_data` | Directory for log and offset storage |
 | `everestmq.logging.level` | `INFO` | Root logging level |
 | `everestmq.log.flush.interval.ms` | `100` | Interval for flushing logs to disk |
 | `everestmq.consumer.poll.timeout.ms` | `500` | Long-polling timeout |

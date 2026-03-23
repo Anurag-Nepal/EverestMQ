@@ -26,7 +26,7 @@ public class BrokerConfig {
     public BrokerConfig(Properties overrideProps) {
         this.config = new EverestConfig(overrideProps);
         this.port = config.getInt("everestmq.broker.port", 9876);
-        this.dataDir = config.getString("everestmq.data.dir", "everestmq-data");
+        this.dataDir = config.getString("everestmq.data.dir", "everestmq_data");
         this.logFlushIntervalMs = config.getLong("everestmq.log.flush.interval.ms", 100);
         this.logLevel = config.getString("everestmq.logging.level", "INFO");
         this.workerThreads = config.getInt("everestmq.broker.worker.threads", 4);

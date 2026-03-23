@@ -33,7 +33,7 @@ public class EverestConfig {
     private void loadDefaults() {
         // Broker defaults
         props.setProperty("everestmq.broker.port", "9876");
-        props.setProperty("everestmq.data.dir", "everestmq-data");
+        props.setProperty("everestmq.data.dir", "everestmq_data");
         props.setProperty("everestmq.logging.level", "INFO");
         props.setProperty("everestmq.log.flush.interval.ms", "100");
         props.setProperty("everestmq.broker.worker.threads", "4");

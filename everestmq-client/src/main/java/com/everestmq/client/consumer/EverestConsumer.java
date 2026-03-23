@@ -59,7 +59,7 @@ public final class EverestConsumer implements AutoCloseable {
 
     public void subscribe(String topic) {
         this.topicName = topic;
-        String dataDir = config.getString("everestmq.data.dir", "everestmq-data");
+        String dataDir = config.getString("everestmq.data.dir", "everestmq_data");
         this.offsetFilePath = Paths.get(dataDir, topic + "-offset.dat");
         this.currentOffset = new AtomicLong(loadOffset(0));
     }
@@ -77,7 +77,7 @@ public final class EverestConsumer implements AutoCloseable {
         this.topicName = topicName;
         this.clientId = clientId;
         this.config = new EverestConfig(properties);
-        String dataDir = config.getString("everestmq.data.dir", "everestmq-data");
+        String dataDir = config.getString("everestmq.data.dir", "everestmq_data");
         this.offsetFilePath = Paths.get(dataDir, topicName + "-offset.dat");
         this.currentOffset = new AtomicLong(loadOffset(startOffset));
         this.managedConnection = false;
