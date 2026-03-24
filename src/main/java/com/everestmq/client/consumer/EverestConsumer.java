@@ -98,19 +98,38 @@ public final class EverestConsumer implements AutoCloseable {
     }
 
     private void commitOffset(long offset) {
+        if (offsetFilePath == null) return;
         try {
-            Files.createDirectories(offsetFilePath.getParent());
+            Path parent = offsetFilePath.getParent();
+            if (parent != null) {
+                Files.createDirectories(parent);
+            }
+            
             Path tempFile = offsetFilePath.resolveSibling(offsetFilePath.getFileName() + ".tmp");
-            Files.writeString(tempFile, String.valueOf(offset), StandardCharsets.UTF_8);
+            
+            // Use FileOutputStream with explicit descriptor sync for maximum durability
+            try (java.io.FileOutputStream fos = new java.io.FileOutputStream(tempFile.toFile())) {
+                fos.write(String.valueOf(offset).getBytes(StandardCharsets.UTF_8));
+                fos.flush();
+                fos.getFD().sync();
+            }
+            
             Files.move(tempFile, offsetFilePath, StandardCopyOption.REPLACE_EXISTING, StandardCopyOption.ATOMIC_MOVE);
-            log.debug("[EverestMQ][MODULE=consumer][TOPIC={}][CLIENT={}] Offset committed: {}", topicName, clientId, offset);
+            log.debug("[EverestMQ][MODULE=consumer][TOPIC={}][CLIENT={}] Offset committed to disk: {}", topicName, clientId, offset);
         } catch (IOException e) {
             log.error("[EverestMQ][MODULE=consumer][TOPIC={}][CLIENT={}] Offset commit failed: {}", topicName, clientId, e.getMessage());
         }
     }
 
     /**
-     * Commits a specific offset to disk.
+     * Commits the current consumption offset to disk manually.
+     */
+    public void commit() {
+        commitOffset(currentOffset.get());
+    }
+
+    /**
+     * Commits a specific offset to disk manually.
      */
     public void commit(long offset) {
         commitOffset(offset);
@@ -191,7 +210,7 @@ public final class EverestConsumer implements AutoCloseable {
                     
                     // Commit AFTER successful processing if auto-commit is enabled
                     if (autoCommit) {
-                        commit(currentOffset.get());
+                        commit();
                     }
                 } else {
                     log.debug("[EverestMQ][MODULE=consumer][TOPIC={}][CLIENT={}] No new messages, backing off for {}ms", topicName, clientId, pollIntervalMs);
