@@ -24,20 +24,16 @@ jobs:
           java-version: '21'
           distribution: 'temurin'   # better than adopt (AdoptOpenJDK is deprecated)
 
-      # 🔼 Auto increase version (patch)
-      - name: Bump version
+      - name: Bump Maven version
         run: |
           mvn build-helper:parse-version versions:set \
-            -DnewVersion=${parsedVersion.majorVersion}.${parsedVersion.minorVersion}.$((parsedVersion.incrementalVersion + 1)) \
+            -DnewVersion=\${parsedVersion.majorVersion}.\${parsedVersion.minorVersion}.\${parsedVersion.nextIncrementalVersion} \
             versions:commit
-
-      - name: Commit new version
-        run: |
-          git config user.name "github-actions"
-          git config user.email "actions@github.com"
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
           git add pom.xml
-          git commit -m "Auto version bump"
-          git push
+          git commit -m "Bump version to next incremental"
+          git push origin main
 
       # 📦 Publish
       - name: Publish package
