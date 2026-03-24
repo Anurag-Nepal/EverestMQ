@@ -1,0 +1,46 @@
+name: Publish artifacts to GitHub Packages
+
+on:
+  push:
+    branches:
+      - main
+
+jobs:
+  publish:
+    # Prevent infinite loop from auto-commit
+    if: "!contains(github.event.head_commit.message, 'Auto version bump')"
+
+    runs-on: ubuntu-latest
+
+    permissions:
+      contents: write
+      packages: write
+
+    steps:
+      - uses: actions/checkout@v3
+
+      - uses: actions/setup-java@v3
+        with:
+          java-version: '21'
+          distribution: 'temurin'   # better than adopt (AdoptOpenJDK is deprecated)
+
+      # 🔼 Auto increase version (patch)
+      - name: Bump version
+        run: |
+          mvn build-helper:parse-version versions:set \
+            -DnewVersion=${parsedVersion.majorVersion}.${parsedVersion.minorVersion}.$((parsedVersion.incrementalVersion + 1)) \
+            versions:commit
+
+      - name: Commit new version
+        run: |
+          git config user.name "github-actions"
+          git config user.email "actions@github.com"
+          git add pom.xml
+          git commit -m "Auto version bump"
+          git push
+
+      # 📦 Publish
+      - name: Publish package
+        run: mvn --batch-mode deploy
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
