@@ -88,14 +88,15 @@ public final class BrokerService {
 
         Path logFile = logManager.getLogFile(topic);
         List<EverestMessage> messages = LogReader.readBatch(topic, logFile, request.offset(), request.batchSize());
+        long currentLeo = topicRegistry.getTopic(topic).getCurrentLEO().get();
         
         if (!messages.isEmpty()) {
             log.debug("[EverestMQ][MODULE=broker][TOPIC={}][OFFSET={}][BATCH={}][CORR_ID={}] Fetch success", 
                     topic, request.offset(), messages.size(), request.correlationId());
-            return new BrokerResponse(request.correlationId(), StatusCode.OK, messages.get(0).offset(), null, messages);
+            return new BrokerResponse(request.correlationId(), StatusCode.OK, currentLeo, null, messages);
         } else {
             log.debug("[EverestMQ][MODULE=broker][TOPIC={}][OFFSET={}][CORR_ID={}] Fetch empty (End of log)", topic, request.offset(), request.correlationId());
-            return new BrokerResponse(request.correlationId(), StatusCode.END_OF_LOG, -1, null);
+            return new BrokerResponse(request.correlationId(), StatusCode.END_OF_LOG, currentLeo, null);
         }
     }
 
