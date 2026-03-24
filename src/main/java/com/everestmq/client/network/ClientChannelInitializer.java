@@ -13,7 +13,7 @@ import java.util.concurrent.CompletableFuture;
  * Protocol framing is handled by LengthFieldBasedFrameDecoder.
  */
 public final class ClientChannelInitializer extends ChannelInitializer<SocketChannel> {
-    private static final int MAX_FRAME_LENGTH = 10 * 1024 * 1024; // 10MB
+    private static final int MAX_FRAME_LENGTH = 20 * 1024 * 1024; // 20MB
     private final Map<Integer, CompletableFuture<BrokerResponse>> pendingRequests;
 
     public ClientChannelInitializer(Map<Integer, CompletableFuture<BrokerResponse>> pendingRequests) {

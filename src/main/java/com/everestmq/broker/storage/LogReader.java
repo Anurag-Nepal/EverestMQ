@@ -38,8 +38,8 @@ public final class LogReader {
         }
 
         try (FileChannel channel = FileChannel.open(logFile, StandardOpenOption.READ)) {
-            // Header: [4B magic][8B offset][8B timestampMs][4B keyLen][4B payloadLen]
-            ByteBuffer header = ByteBuffer.allocate(4 + 8 + 8 + 4 + 4);
+            // Header: [4B magic][8B offset][8B timestampMs][4B keyLen]
+            ByteBuffer header = ByteBuffer.allocate(4 + 8 + 8 + 4);
             
             while (channel.position() < channel.size() && messages.size() < batchSize) {
                 header.clear();
@@ -59,7 +59,6 @@ public final class LogReader {
                 long offset = header.getLong();
                 long timestampMs = header.getLong();
                 int keyLen = header.getInt();
-                int payloadLen = header.getInt();
                 
                 if (offset >= startOffset) {
                     byte[] key = null;
@@ -67,6 +66,12 @@ public final class LogReader {
                         key = new byte[keyLen];
                         channel.read(ByteBuffer.wrap(key));
                     }
+                    
+                    // Read payload length (4B)
+                    ByteBuffer plBuf = ByteBuffer.allocate(4);
+                    channel.read(plBuf);
+                    plBuf.flip();
+                    int payloadLen = plBuf.getInt();
                     
                     byte[] payload = new byte[payloadLen];
                     channel.read(ByteBuffer.wrap(payload));
@@ -76,8 +81,14 @@ public final class LogReader {
                     
                     messages.add(new EverestMessage(topicName, offset, key, payload, timestampMs));
                 } else {
-                    // Skip key, payload and newline sentinel
-                    channel.position(channel.position() + keyLen + payloadLen + 1);
+                    // Skip key, payloadLen(4), payload and newline sentinel(1)
+                    // We need to read payloadLen first to know how much to skip
+                    channel.position(channel.position() + keyLen);
+                    ByteBuffer plBuf = ByteBuffer.allocate(4);
+                    channel.read(plBuf);
+                    plBuf.flip();
+                    int payloadLen = plBuf.getInt();
+                    channel.position(channel.position() + payloadLen + 1);
                 }
             }
         } catch (IOException e) {

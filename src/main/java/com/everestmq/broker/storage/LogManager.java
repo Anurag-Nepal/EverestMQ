@@ -68,8 +68,8 @@ public final class LogManager {
         int messageCount = 0;
 
         try (FileChannel channel = FileChannel.open(logFile, StandardOpenOption.READ)) {
-            // Header: [4B magic][8B offset][8B timestampMs][4B keyLen][4B payloadLen]
-            ByteBuffer header = ByteBuffer.allocate(4 + 8 + 8 + 4 + 4);
+            // Header: [4B magic][8B offset][8B timestampMs][4B keyLen]
+            ByteBuffer header = ByteBuffer.allocate(4 + 8 + 8 + 4);
             while (channel.position() < channel.size()) {
                 header.clear();
                 if (channel.read(header) < header.capacity()) {
@@ -88,13 +88,19 @@ public final class LogManager {
                 maxOffset = Math.max(maxOffset, offset);
                 messageCount++;
                 
-                // Skip timestampMs and read keyLen, payloadLen to skip them
+                // Read keyLen and timestamp (already in header)
                 header.getLong(); // timestampMs
                 int keyLen = header.getInt();
-                int payloadLen = header.getInt();
                 
-                // Advance to next record (key + payload + 1B newline)
-                channel.position(channel.position() + keyLen + payloadLen + 1);
+                // Advance position to read payloadLen (4B)
+                channel.position(channel.position() + keyLen);
+                ByteBuffer plBuf = ByteBuffer.allocate(4);
+                channel.read(plBuf);
+                plBuf.flip();
+                int payloadLen = plBuf.getInt();
+                
+                // Advance to next record (payload + 1B newline)
+                channel.position(channel.position() + payloadLen + 1);
             }
         } catch (IOException e) {
             log.error("Failed to recover topic {}: {}", topicName, e.getMessage());
