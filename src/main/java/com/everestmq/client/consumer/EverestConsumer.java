@@ -7,6 +7,7 @@ import com.everestmq.commons.model.BrokerResponse;
 import com.everestmq.commons.model.EverestMessage;
 import com.everestmq.commons.protocol.CommandType;
 import com.everestmq.commons.protocol.StatusCode;
+import com.everestmq.commons.serialization.EverestSerializer;
 import com.everestmq.commons.util.EverestConsumerException;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -138,6 +139,18 @@ public final class EverestConsumer implements AutoCloseable {
 
     public long currentOffset() {
         return currentOffset.get();
+    }
+
+    /**
+     * Polls for a single object of the specified class.
+     * Automatically handles Protobuf and JSON deserialization based on message metadata.
+     */
+    public <T> T poll(Class<T> clazz) throws EverestConsumerException {
+        List<EverestMessage> batch = poll();
+        if (batch == null || batch.isEmpty()) return null;
+        
+        // Return the first message in the batch deserialized
+        return EverestSerializer.deserialize(batch.get(0).payload(), clazz);
     }
 
     /**

@@ -6,6 +6,7 @@ import com.everestmq.commons.model.BrokerRequest;
 import com.everestmq.commons.model.BrokerResponse;
 import com.everestmq.commons.protocol.CommandType;
 import com.everestmq.commons.protocol.StatusCode;
+import com.everestmq.commons.serialization.EverestSerializer;
 import com.everestmq.commons.util.EverestProducerException;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -17,7 +18,7 @@ import java.util.function.BiConsumer;
 
 /**
  * EverestMQ message producer.
- * Provides APIs for sending binary or string data to a specific topic.
+ * Provides APIs for sending binary, string, or POJO data to a specific topic.
  * Includes automatic retry logic and support for delivery confirmation callbacks.
  */
 public final class EverestProducer implements AutoCloseable {
@@ -136,6 +137,24 @@ public final class EverestProducer implements AutoCloseable {
     public long send(byte[] payload) throws EverestProducerException {
         if (topicName == null) throw new IllegalStateException("Topic name not specified");
         return send(topicName, null, payload);
+    }
+
+    /**
+     * Sends a POJO to the specified topic.
+     * Automatically uses Protobuf if a mapper is registered, otherwise falls back to JSON.
+     */
+    public long send(String topic, Object obj) throws EverestProducerException {
+        byte[] payload = EverestSerializer.serialize(obj);
+        return send(topic, null, payload);
+    }
+
+    /**
+     * Sends a POJO to the default topic.
+     * Automatically uses Protobuf if a mapper is registered, otherwise falls back to JSON.
+     */
+    public long send(Object obj) throws EverestProducerException {
+        if (topicName == null) throw new IllegalStateException("Topic name not specified");
+        return send(topicName, obj);
     }
 
     public void sendAsync(String topic, byte[] key, byte[] payload, BiConsumer<Long, Throwable> callback) {
