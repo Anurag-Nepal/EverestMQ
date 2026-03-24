@@ -71,6 +71,25 @@ public final class EverestProducer implements AutoCloseable {
         int keySize = key != null ? key.length : 0;
 
         while (attempts <= maxRetries) {
+            if (connection == null || !connection.isActive()) {
+                log.info("[EverestMQ][MODULE=producer][TOPIC={}] Connection lost. Attempting to reconnect...", topic);
+                try {
+                    if (managedConnection) {
+                        connection.connect();
+                    } else {
+                        throw new EverestProducerException("Shared connection is inactive");
+                    }
+                } catch (Exception e) {
+                    log.warn("[EverestMQ][MODULE=producer][TOPIC={}] Reconnection failed: {}", topic, e.getMessage());
+                    attempts++;
+                    if (attempts <= maxRetries) {
+                        try { Thread.sleep(retryBackoffMs); } catch (InterruptedException ie) { Thread.currentThread().interrupt(); throw new EverestProducerException("Send interrupted", ie); }
+                        continue;
+                    }
+                    throw new EverestProducerException("Failed to reconnect producer", e);
+                }
+            }
+
             int correlationId = -1;
             try {
                 correlationId = connection.nextCorrelationId();
