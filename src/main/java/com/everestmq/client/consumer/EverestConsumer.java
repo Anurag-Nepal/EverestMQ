@@ -110,6 +110,17 @@ public final class EverestConsumer implements AutoCloseable {
     }
 
     /**
+     * Commits a specific offset to disk.
+     */
+    public void commit(long offset) {
+        commitOffset(offset);
+    }
+
+    public long currentOffset() {
+        return currentOffset.get();
+    }
+
+    /**
      * Polls for a batch of messages.
      */
     public List<EverestMessage> poll() throws EverestConsumerException {
@@ -137,15 +148,14 @@ public final class EverestConsumer implements AutoCloseable {
             if (response.status() == StatusCode.OK) {
                 List<EverestMessage> messages = response.messages();
                 if (messages != null && !messages.isEmpty()) {
-                    long nextOffset = messages.get(messages.size() - 1).offset() + 1;
+                    long lastMsgOffset = messages.get(messages.size() - 1).offset();
+                    long nextOffset = lastMsgOffset + 1;
+                    
+                    // Update local in-memory offset
                     currentOffset.set(nextOffset);
                     
-                    if (config.getBoolean("everestmq.consumer.offset.auto.commit", true)) {
-                        commitOffset(nextOffset);
-                    }
-                    
                     for (EverestMessage m : messages) {
-                        log.info("[EverestMQ][MODULE=consumer][TOPIC={}][OFFSET={}][CLIENT={}][CORR_ID={}] Message consumed", 
+                        log.info("[EverestMQ][MODULE=consumer][TOPIC={}][OFFSET={}][CLIENT={}][CORR_ID={}] Message fetched", 
                                 topicName, m.offset(), clientId, correlationId);
                     }
                     return messages;
@@ -168,13 +178,21 @@ public final class EverestConsumer implements AutoCloseable {
      */
     public void pollLoop(Consumer<EverestMessage> handler) {
         long pollIntervalMs = config.getLong("everestmq.consumer.poll.timeout.ms", 500);
-        log.info("[EverestMQ][MODULE=consumer][TOPIC={}][CLIENT={}] Starting poll loop at offset {}", topicName, clientId, currentOffset.get());
+        boolean autoCommit = config.getBoolean("everestmq.consumer.offset.auto.commit", true);
+        log.info("[EverestMQ][MODULE=consumer][TOPIC={}][CLIENT={}] Starting poll loop at offset {} | autoCommit={}", 
+                topicName, clientId, currentOffset.get(), autoCommit);
         
         while (!Thread.currentThread().isInterrupted()) {
             try {
                 List<EverestMessage> messages = poll();
                 if (!messages.isEmpty()) {
+                    // Process messages
                     messages.forEach(handler::accept);
+                    
+                    // Commit AFTER successful processing if auto-commit is enabled
+                    if (autoCommit) {
+                        commit(currentOffset.get());
+                    }
                 } else {
                     log.debug("[EverestMQ][MODULE=consumer][TOPIC={}][CLIENT={}] No new messages, backing off for {}ms", topicName, clientId, pollIntervalMs);
                     Thread.sleep(pollIntervalMs);
