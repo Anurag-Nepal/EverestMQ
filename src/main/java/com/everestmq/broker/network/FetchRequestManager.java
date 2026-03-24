@@ -34,7 +34,9 @@ public final class FetchRequestManager {
      */
     public void addFetchRequest(ChannelHandlerContext ctx, BrokerRequest request, long timeoutMs) {
         PendingFetch pf = new PendingFetch(ctx, request);
-        waitingRequests.computeIfAbsent(request.topicName(), k -> new ArrayList<>()).add(pf);
+        synchronized (waitingRequests) {
+            waitingRequests.computeIfAbsent(request.topicName(), k -> new ArrayList<>()).add(pf);
+        }
         
         // Schedule timeout
         ctx.executor().schedule(() -> {
@@ -42,7 +44,12 @@ public final class FetchRequestManager {
                 // Remove from waiting list
                 synchronized (waitingRequests) {
                     List<PendingFetch> list = waitingRequests.get(request.topicName());
-                    if (list != null) list.remove(pf);
+                    if (list != null) {
+                        list.remove(pf);
+                        if (list.isEmpty()) {
+                            waitingRequests.remove(request.topicName());
+                        }
+                    }
                 }
                 // Send empty response
                 log.debug("[LONG-POLL] Timeout for topic={} corrId={}", request.topicName(), request.correlationId());

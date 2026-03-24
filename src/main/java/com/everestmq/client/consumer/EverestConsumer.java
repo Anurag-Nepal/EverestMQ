@@ -119,6 +119,14 @@ public final class EverestConsumer implements AutoCloseable {
         int correlationId = -1;
         long offset = currentOffset.get();
         try {
+            if (connection == null || !connection.isActive()) {
+                log.info("[EverestMQ][MODULE=consumer][TOPIC={}][CLIENT={}] Connection lost. Attempting to reconnect...", topicName, clientId);
+                if (managedConnection) {
+                    connection.connect();
+                } else {
+                    throw new EverestConsumerException("Shared connection is inactive");
+                }
+            }
             correlationId = connection.nextCorrelationId();
             log.debug("[EverestMQ][MODULE=consumer][TOPIC={}][OFFSET={}][BATCH={}][CLIENT={}][CORR_ID={}] Polling...", 
                     topicName, offset, batchSize, clientId, correlationId);
@@ -158,18 +166,35 @@ public final class EverestConsumer implements AutoCloseable {
     /**
      * Continuous poll loop.
      */
-    public void pollLoop(Consumer<EverestMessage> handler) throws EverestConsumerException {
+    public void pollLoop(Consumer<EverestMessage> handler) {
         long pollIntervalMs = config.getLong("everestmq.consumer.poll.timeout.ms", 500);
         log.info("[EverestMQ][MODULE=consumer][TOPIC={}][CLIENT={}] Starting poll loop at offset {}", topicName, clientId, currentOffset.get());
+        
         while (!Thread.currentThread().isInterrupted()) {
-            List<EverestMessage> messages = poll();
-            if (!messages.isEmpty()) {
-                messages.forEach(handler::accept);
-            } else {
+            try {
+                List<EverestMessage> messages = poll();
+                if (!messages.isEmpty()) {
+                    messages.forEach(handler::accept);
+                } else {
+                    log.debug("[EverestMQ][MODULE=consumer][TOPIC={}][CLIENT={}] No new messages, backing off for {}ms", topicName, clientId, pollIntervalMs);
+                    Thread.sleep(pollIntervalMs);
+                }
+            } catch (EverestConsumerException e) {
+                log.warn("[EverestMQ][MODULE=consumer][TOPIC={}][CLIENT={}] Poll failed: {}. Retrying in 1s...", topicName, clientId, e.getMessage());
                 try {
-                    // Backoff slightly even with long-polling to prevent tight loops in case of immediate empty responses
-                    Thread.sleep(100); 
-                } catch (InterruptedException e) {
+                    Thread.sleep(1000);
+                } catch (InterruptedException ie) {
+                    Thread.currentThread().interrupt();
+                    break;
+                }
+            } catch (InterruptedException e) {
+                Thread.currentThread().interrupt();
+                break;
+            } catch (Exception e) {
+                log.error("[EverestMQ][MODULE=consumer][TOPIC={}][CLIENT={}] Unexpected error in poll loop: {}", topicName, clientId, e.getMessage());
+                try {
+                    Thread.sleep(1000);
+                } catch (InterruptedException ie) {
                     Thread.currentThread().interrupt();
                     break;
                 }
