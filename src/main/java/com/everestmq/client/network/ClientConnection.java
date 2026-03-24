@@ -14,10 +14,10 @@ import io.netty.channel.nio.NioEventLoopGroup;
 import io.netty.channel.socket.nio.NioSocketChannel;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import com.everestmq.commons.model.BrokerRequest;
+import com.everestmq.commons.protocol.CommandType;
 
-import java.util.concurrent.CompletableFuture;
-import java.util.concurrent.ConcurrentHashMap;
-import java.util.concurrent.TimeUnit;
+import java.util.concurrent.*;
 import java.util.concurrent.atomic.AtomicInteger;
 
 /**
@@ -32,6 +32,7 @@ public final class ClientConnection implements AutoCloseable {
     private final EventLoopGroup group;
     private final AtomicInteger correlationIdGenerator = new AtomicInteger(0);
     private final ConcurrentHashMap<Integer, CompletableFuture<BrokerResponse>> pendingRequests = new ConcurrentHashMap<>();
+    private final ScheduledExecutorService heartbeatExecutor;
     
     private Channel channel;
 
@@ -39,10 +40,16 @@ public final class ClientConnection implements AutoCloseable {
         this.host = host;
         this.port = port;
         this.group = new NioEventLoopGroup(1);
+        this.heartbeatExecutor = Executors.newSingleThreadScheduledExecutor(r -> {
+            Thread t = new Thread(r, "EverestClient-Heartbeat-" + host + ":" + port);
+            t.setDaemon(true);
+            return t;
+        });
     }
 
     /**
      * Establishes a connection to the broker with automatic retry logic and exponential backoff.
+     * Starts heartbeat executor upon successful connection.
      *
      * @throws EverestMQException if connection fails after all retries.
      */
@@ -61,6 +68,9 @@ public final class ClientConnection implements AutoCloseable {
                 ChannelFuture connectFuture = b.connect(host, port).sync();
                 this.channel = connectFuture.channel();
                 log.info("Successfully connected to broker at {}:{}", host, port);
+                
+                // Start heartbeats
+                heartbeatExecutor.scheduleAtFixedRate(this::sendHeartbeat, 5, 5, TimeUnit.SECONDS);
                 return;
             } catch (Exception e) {
                 attempts++;
@@ -75,6 +85,17 @@ public final class ClientConnection implements AutoCloseable {
                     Thread.currentThread().interrupt();
                     throw new EverestMQException("Connection interrupted", ie);
                 }
+            }
+        }
+    }
+
+    private void sendHeartbeat() {
+        if (isActive()) {
+            try {
+                BrokerRequest ping = new BrokerRequest(nextCorrelationId(), CommandType.PING, "heartbeat", -1, 1, null, null);
+                send(ping, 2000);
+            } catch (Exception e) {
+                log.debug("Heartbeat failed for connection to {}:{}: {}", host, port, e.getMessage());
             }
         }
     }
@@ -129,7 +150,8 @@ public final class ClientConnection implements AutoCloseable {
 
     @Override
     public void close() {
-        log.debug("Closing client connection...");
+        log.debug("Closing client connection to {}:{}", host, port);
+        heartbeatExecutor.shutdownNow();
         if (channel != null) {
             channel.close().syncUninterruptibly();
         }

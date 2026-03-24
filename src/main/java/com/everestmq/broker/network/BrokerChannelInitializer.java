@@ -31,8 +31,8 @@ public final class BrokerChannelInitializer extends ChannelInitializer<SocketCha
         ch.pipeline().addLast(new LengthFieldBasedFrameDecoder(MAX_FRAME_LENGTH, 0, 4, 0, 4));
         ch.pipeline().addLast(new RequestDecoder());
         ch.pipeline().addLast(new ResponseEncoder());
-        // Heartbeat detection: close connection if no read for 30s
-        ch.pipeline().addLast(new IdleStateHandler(30, 0, 0, TimeUnit.SECONDS));
+        // Heartbeat detection: close connection if no read for 60s
+        ch.pipeline().addLast(new IdleStateHandler(60, 0, 0, TimeUnit.SECONDS));
         ch.pipeline().addLast(new BrokerRequestHandler(brokerService, fetchRequestManager, config));
     }
 }

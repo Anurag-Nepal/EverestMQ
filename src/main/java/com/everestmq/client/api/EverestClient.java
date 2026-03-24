@@ -25,31 +25,8 @@ public final class EverestClient implements Closeable {
     private static final Logger log = LoggerFactory.getLogger(EverestClient.class);
     
     private final ConcurrentHashMap<String, ClientConnection> connections = new ConcurrentHashMap<>();
-    private final ScheduledExecutorService heartbeatExecutor = Executors.newSingleThreadScheduledExecutor(r -> {
-        Thread t = new Thread(r, "EverestClient-Heartbeat");
-        t.setDaemon(true);
-        return t;
-    });
 
     public EverestClient() {
-        startHeartbeats();
-    }
-
-    private void startHeartbeats() {
-        heartbeatExecutor.scheduleAtFixedRate(this::sendHeartbeats, 5, 5, TimeUnit.SECONDS);
-    }
-
-    private void sendHeartbeats() {
-        connections.values().forEach(conn -> {
-            try {
-                if (conn.isActive()) {
-                    BrokerRequest ping = new BrokerRequest(conn.nextCorrelationId(), CommandType.PING, "heartbeat", -1, null);
-                    conn.send(ping, 2000);
-                }
-            } catch (Exception e) {
-                log.debug("Heartbeat failed for connection: {}", e.getMessage());
-            }
-        });
     }
 
     /**
@@ -115,7 +92,6 @@ public final class EverestClient implements Closeable {
     @Override
     public void close() {
         log.info("Closing EverestClient and all active connections...");
-        heartbeatExecutor.shutdownNow();
         connections.values().forEach(ClientConnection::close);
         connections.clear();
     }
