@@ -46,6 +46,7 @@ public final class EverestConsumer implements AutoCloseable {
     public EverestConsumer(Properties properties) {
         this.config = new EverestConfig(properties);
         this.clientId = config.getString("everestmq.consumer.client.id", "client-" + System.nanoTime());
+        this.currentOffset = new AtomicLong(0); // Default, will be updated by subscribe()
         String host = config.getString("everestmq.broker.host", "localhost");
         int port = config.getInt("everestmq.broker.port", 9876);
         try {
@@ -143,6 +144,9 @@ public final class EverestConsumer implements AutoCloseable {
      * Polls for a batch of messages.
      */
     public List<EverestMessage> poll() throws EverestConsumerException {
+        if (topicName == null) {
+            throw new EverestConsumerException("Consumer is not subscribed to any topic. Call subscribe(topic) first.");
+        }
         int batchSize = config.getInt("everestmq.consumer.batch.size", 10);
         long requestTimeoutMs = config.getLong("everestmq.broker.request.timeout.ms", 5000);
         
