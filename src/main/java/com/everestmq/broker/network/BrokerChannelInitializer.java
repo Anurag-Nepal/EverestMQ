@@ -13,7 +13,7 @@ import java.util.concurrent.TimeUnit;
  * Configures the Netty pipeline for processing EverestMQ broker traffic.
  */
 public final class BrokerChannelInitializer extends ChannelInitializer<SocketChannel> {
-    private static final int MAX_FRAME_LENGTH = 10 * 1024 * 1024; // 10MB limit
+    private static final int MAX_FRAME_LENGTH = 20 * 1024 * 1024; // 20MB limit
 
     private final BrokerService brokerService;
     private final FetchRequestManager fetchRequestManager;
