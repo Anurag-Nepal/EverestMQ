@@ -6,6 +6,7 @@ import com.everestmq.commons.model.BrokerRequest;
 import com.everestmq.commons.model.BrokerResponse;
 import com.everestmq.commons.protocol.CommandType;
 import com.everestmq.commons.protocol.StatusCode;
+import com.everestmq.commons.protocol.AckPolicy;
 import io.netty.channel.ChannelHandler;
 import io.netty.channel.ChannelHandlerContext;
 import io.netty.channel.SimpleChannelInboundHandler;
@@ -15,7 +16,7 @@ import org.slf4j.LoggerFactory;
 
 /**
  * Netty inbound handler that bridges network requests to the BrokerService.
- * Ensures every request receives a response, even in the event of an error.
+ * Handles AckPolicy to optimize throughput.
  */
 @ChannelHandler.Sharable
 public final class BrokerRequestHandler extends SimpleChannelInboundHandler<BrokerRequest> {
@@ -35,10 +36,11 @@ public final class BrokerRequestHandler extends SimpleChannelInboundHandler<Brok
         try {
             BrokerResponse response = brokerService.handle(request);
             
-            // Long-polling logic: if it's a FETCH and it's empty, we wait
+            if (request.ackPolicy() == AckPolicy.NONE && request.command() != CommandType.FETCH) {
+                return;
+            }
+
             if (request.command() == CommandType.FETCH && response.status() == StatusCode.END_OF_LOG) {
-                log.debug("[EverestMQ][MODULE=broker][TOPIC={}][CORR_ID={}] No data, holding request for long-poll", 
-                        request.topicName(), request.correlationId());
                 fetchRequestManager.addFetchRequest(ctx, request, config.getRawProps().containsKey("everestmq.consumer.poll.timeout.ms") 
                         ? Long.parseLong(config.getRawProps().getProperty("everestmq.consumer.poll.timeout.ms")) : 500);
             } else {
@@ -46,14 +48,15 @@ public final class BrokerRequestHandler extends SimpleChannelInboundHandler<Brok
             }
         } catch (Exception e) {
             log.error("[EverestMQ][MODULE=broker][CORR_ID={}] Unhandled error: {}", request.correlationId(), e.getMessage());
-            ctx.writeAndFlush(new BrokerResponse(request.correlationId(), StatusCode.INTERNAL_ERROR, -1, null));
+            if (request.ackPolicy() != AckPolicy.NONE) {
+                ctx.writeAndFlush(new BrokerResponse(request.correlationId(), StatusCode.INTERNAL_ERROR, -1, null));
+            }
         }
     }
 
     @Override
     public void userEventTriggered(ChannelHandlerContext ctx, Object evt) throws Exception {
         if (evt instanceof IdleStateEvent) {
-            log.warn("[EverestMQ][MODULE=broker] Closing idle connection from {}", ctx.channel().remoteAddress());
             ctx.close();
         } else {
             super.userEventTriggered(ctx, evt);
@@ -63,14 +66,9 @@ public final class BrokerRequestHandler extends SimpleChannelInboundHandler<Brok
     @Override
     public void exceptionCaught(ChannelHandlerContext ctx, Throwable cause) {
         String msg = cause.getMessage();
-        if (msg != null && (msg.contains("Connection reset") || msg.contains("Broken pipe"))) {
-            log.debug("[EverestMQ][MODULE=broker] Client disconnected gracefully ({}): {}", ctx.channel().remoteAddress(), msg);
-        } else {
-            log.error("[EverestMQ][MODULE=broker] Netty channel exception caught on channel {} (remote={}): {}", 
-                    ctx.channel().id(), ctx.channel().remoteAddress(), cause.getMessage(), cause);
+        if (msg == null || (!msg.contains("Connection reset") && !msg.contains("Broken pipe"))) {
+            log.error("[EverestMQ][MODULE=broker] Netty channel exception: {}", cause.getMessage());
         }
-        if (cause instanceof java.io.IOException) {
-            ctx.close();
-        }
+        ctx.close();
     }
 }
