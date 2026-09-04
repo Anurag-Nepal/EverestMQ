@@ -43,7 +43,7 @@ jobs:
         run: mvn --batch-mode deploy
         env:
           MAVEN_USERNAME: ${{ github.actor }}
-          MAVEN_TOKEN: ${{ secrets.ACTION_TOKEN || secrets.GITHUB_TOKEN }}
+          MAVEN_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Commit version bump
         run: |
