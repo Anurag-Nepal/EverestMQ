@@ -1,0 +1,58 @@
+services:
+  broker:
+    build: .
+    image: everestmq:local
+    container_name: everestmq-broker
+    ports:
+      - "9876:9876"
+    environment:
+      EVERESTMQ_BROKER_PORT: "9876"
+      EVERESTMQ_DATA_DIR: /data
+    volumes:
+      - broker-data:/data
+    healthcheck:
+      # The JRE image ships bash, so /dev/tcp is enough to test the listener.
+      test: ["CMD-SHELL", "timeout 1 bash -c '</dev/tcp/localhost/9876'"]
+      interval: 5s
+      timeout: 3s
+      retries: 12
+      start_period: 10s
+    restart: unless-stopped
+
+  producer:
+    build: .
+    image: everestmq:local
+    container_name: everestmq-producer
+    depends_on:
+      broker:
+        condition: service_healthy
+    environment:
+      EVERESTMQ_BROKER_HOST: broker
+      EVERESTMQ_BROKER_PORT: "9876"
+      EVERESTMQ_TOPIC: demo-topic
+      EVERESTMQ_PRODUCE_INTERVAL_MS: "1000"
+    command: ["java", "-cp", "/app/everestmq.jar", "com.everestmq.examples.ProducerApp"]
+    restart: unless-stopped
+
+  consumer:
+    build: .
+    image: everestmq:local
+    container_name: everestmq-consumer
+    depends_on:
+      broker:
+        condition: service_healthy
+    environment:
+      EVERESTMQ_BROKER_HOST: broker
+      EVERESTMQ_BROKER_PORT: "9876"
+      EVERESTMQ_TOPIC: demo-topic
+      EVERESTMQ_CLIENT_ID: demo-consumer
+      # Consumer offsets are stored client-side under the data dir.
+      EVERESTMQ_DATA_DIR: /data
+    volumes:
+      - consumer-data:/data
+    command: ["java", "-cp", "/app/everestmq.jar", "com.everestmq.examples.ConsumerApp"]
+    restart: unless-stopped
+
+volumes:
+  broker-data:
+  consumer-data:
