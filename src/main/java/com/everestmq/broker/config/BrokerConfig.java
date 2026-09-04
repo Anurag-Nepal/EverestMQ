@@ -29,8 +29,9 @@ public class BrokerConfig {
         this.dataDir = config.getString("everestmq.data.dir", "everestmq_data");
         this.logFlushIntervalMs = config.getLong("everestmq.log.flush.interval.ms", 100);
         this.logLevel = config.getString("everestmq.logging.level", "INFO");
-        this.workerThreads = config.getInt("everestmq.broker.worker.threads", 4);
+        this.workerThreads = config.getInt("everestmq.broker.worker.threads", Math.max(4, Runtime.getRuntime().availableProcessors() * 2));
     }
+
 
     public int getPort() {
         return port;

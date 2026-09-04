@@ -5,6 +5,7 @@ import com.everestmq.broker.network.BrokerChannelInitializer;
 import com.everestmq.broker.network.FetchRequestManager;
 import com.everestmq.broker.service.BrokerService;
 import io.netty.bootstrap.ServerBootstrap;
+import io.netty.buffer.PooledByteBufAllocator;
 import io.netty.channel.ChannelFuture;
 import io.netty.channel.ChannelOption;
 import io.netty.channel.EventLoopGroup;
@@ -34,7 +35,10 @@ public final class BrokerBootstrap {
                 .childHandler(new BrokerChannelInitializer(brokerService, fetchRequestManager, config))
                 .option(ChannelOption.SO_BACKLOG, 1024)
                 .childOption(ChannelOption.SO_KEEPALIVE, true)
-                .childOption(ChannelOption.TCP_NODELAY, true);
+                .childOption(ChannelOption.TCP_NODELAY, true)
+                .childOption(ChannelOption.SO_SNDBUF, 1024 * 1024)
+                .childOption(ChannelOption.SO_RCVBUF, 1024 * 1024)
+                .childOption(ChannelOption.ALLOCATOR, PooledByteBufAllocator.DEFAULT);
 
         return b.bind(config.getPort());
     }

@@ -18,19 +18,20 @@ public final class MessageCodec {
 
     /**
      * Encodes a BrokerRequest into a ByteBuf.
-     * Frame: [4B totalLen][4B correlationId][1B command][2B topic_length][NB topic][8B offset][4B batchSize][4B key_length][NB key][4B payload_length][NB payload]
+     * Frame: [4B totalLen][4B correlationId][1B command][1B ackPolicy][2B topic_length][NB topic][8B offset][4B batchSize][4B key_length][NB key][4B payload_length][NB payload]
      */
     public static void encodeRequest(BrokerRequest request, ByteBuf out) {
         byte[] topicBytes = request.topicName().getBytes(StandardCharsets.UTF_8);
         int keyLen = request.key() != null ? request.key().length : 0;
         int payloadLen = request.payload() != null ? request.payload().length : 0;
         
-        // Total (excluding totalLen field): corrId(4) + cmd(1) + topicLen(2) + topic(NB) + offset(8) + batchSize(4) + keyLen(4) + key(NB) + payloadLen(4) + payload(NB)
-        int totalLength = 4 + 1 + 2 + topicBytes.length + 8 + 4 + 4 + keyLen + 4 + payloadLen;
+        // Total (excluding totalLen field): corrId(4) + cmd(1) + ackPolicy(1) + topicLen(2) + topic(NB) + offset(8) + batchSize(4) + keyLen(4) + key(NB) + payloadLen(4) + payload(NB)
+        int totalLength = 4 + 1 + 1 + 2 + topicBytes.length + 8 + 4 + 4 + keyLen + 4 + payloadLen;
         
         out.writeInt(totalLength);
         out.writeInt(request.correlationId());
         out.writeByte(request.command().code());
+        out.writeByte(request.ackPolicy().code());
         out.writeShort(topicBytes.length);
         out.writeBytes(topicBytes);
         out.writeLong(request.offset());
@@ -51,6 +52,7 @@ public final class MessageCodec {
     public static BrokerRequest decodeRequest(ByteBuf in) {
         int correlationId = in.readInt();
         CommandType command = CommandType.fromCode(in.readByte());
+        AckPolicy ackPolicy = AckPolicy.fromCode(in.readByte());
         int topicLen = in.readUnsignedShort();
         byte[] topicBytes = new byte[topicLen];
         in.readBytes(topicBytes);
@@ -71,22 +73,17 @@ public final class MessageCodec {
             payload = new byte[payloadLen];
             in.readBytes(payload);
         }
-        return new BrokerRequest(correlationId, command, topicName, offset, batchSize, key, payload);
+        return new BrokerRequest(correlationId, command, topicName, offset, ackPolicy, batchSize, key, payload);
     }
 
     /**
      * Encodes a BrokerResponse into a ByteBuf.
-     * Frame: [4B totalLen][4B correlationId][1B status][8B offset][4B payload_length][NB payload][4B num_messages][Message 1][Message 2]...
-     * Message: [8B offset][8B timestamp][4B keyLen][NB key][4B payloadLen][NB payload]
      */
     public static void encodeResponse(BrokerResponse response, ByteBuf out) {
         int payloadLen = response.payload() != null ? response.payload().length : 0;
         int numMessages = response.messages() != null ? response.messages().size() : 0;
 
-        // Base total (excluding totalLen field): corrId(4) + status(1) + offset(8) + payloadLen(4) + payload(NB) + numMessages(4)
         int totalLength = 4 + 1 + 8 + 4 + payloadLen + 4;
-        
-        // Add dynamic message lengths
         if (numMessages > 0) {
             for (EverestMessage m : response.messages()) {
                 totalLength += 8 + 8 + 4 + (m.key() != null ? m.key().length : 0) + 4 + (m.payload() != null ? m.payload().length : 0);
@@ -158,10 +155,8 @@ public final class MessageCodec {
                 mPayload = new byte[mPayloadLen];
                 in.readBytes(mPayload);
             }
-            // Note: topicName is set to null here; client is responsible for filling it based on the request topic.
             messages.add(new EverestMessage(null, mOffset, mKey, mPayload, mTimestamp));
         }
-        
         return new BrokerResponse(correlationId, status, offset, payload, messages);
     }
 }

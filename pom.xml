@@ -8,8 +8,8 @@
 
     <groupId>com.everestmq</groupId>
     <artifactId>everestmq</artifactId>
-    <version>0.1.8</version>
-    <packaging>jar</packaging>
+    <version>0.1.0-SNAPSHOT</version>
+    <packaging>pom</packaging>
 
     <name>EverestMQ</name>
     <description>A production-grade, single-node message queue system built with Java and Netty.</description>
@@ -28,6 +28,9 @@
             <email>anuragnepal2062@gmail.com</email>
         </developer>
     </developers>
+    <modules>
+        <module>Docs</module>
+    </modules>
 
     <properties>
         <java.version>17</java.version>
@@ -40,9 +43,25 @@
         <logback.version>1.4.11</logback.version>
         <junit.version>5.10.0</junit.version>
         <mockito.version>5.5.0</mockito.version>
+        <protobuf.version>3.24.4</protobuf.version>
+        <jackson.version>2.15.2</jackson.version>
     </properties>
 
     <dependencies>
+        <!-- Protobuf -->
+        <dependency>
+            <groupId>com.google.protobuf</groupId>
+            <artifactId>protobuf-java</artifactId>
+            <version>${protobuf.version}</version>
+        </dependency>
+
+        <!-- JSON Serialization -->
+        <dependency>
+            <groupId>com.fasterxml.jackson.core</groupId>
+            <artifactId>jackson-databind</artifactId>
+            <version>${jackson.version}</version>
+        </dependency>
+
         <!-- Netty -->
         <dependency>
             <groupId>io.netty</groupId>

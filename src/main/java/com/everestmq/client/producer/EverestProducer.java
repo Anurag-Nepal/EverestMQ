@@ -4,21 +4,19 @@ import com.everestmq.client.network.ClientConnection;
 import com.everestmq.commons.config.EverestConfig;
 import com.everestmq.commons.model.BrokerRequest;
 import com.everestmq.commons.model.BrokerResponse;
+import com.everestmq.commons.protocol.AckPolicy;
 import com.everestmq.commons.protocol.CommandType;
-import com.everestmq.commons.protocol.StatusCode;
 import com.everestmq.commons.util.EverestProducerException;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
-import java.nio.charset.StandardCharsets;
 import java.util.Properties;
 import java.util.concurrent.CompletableFuture;
-import java.util.function.BiConsumer;
+import java.util.concurrent.atomic.AtomicInteger;
 
 /**
- * EverestMQ message producer.
- * Provides APIs for sending binary or string data to a specific topic.
- * Includes automatic retry logic and support for delivery confirmation callbacks.
+ * Optimized EverestMQ message producer.
+ * Supports asynchronous batched sends with configurable ACK policies.
  */
 public final class EverestProducer implements AutoCloseable {
     private static final Logger log = LoggerFactory.getLogger(EverestProducer.class);
@@ -26,7 +24,10 @@ public final class EverestProducer implements AutoCloseable {
     private final ClientConnection connection;
     private final EverestConfig config;
     private final boolean managedConnection;
-    private final String topicName;
+    private final String defaultTopic;
+    private final AckPolicy ackPolicy;
+    private final int batchSize;
+    private final AtomicInteger unflushedCount = new AtomicInteger(0);
 
     public EverestProducer() {
         this(new Properties());
@@ -34,6 +35,10 @@ public final class EverestProducer implements AutoCloseable {
 
     public EverestProducer(Properties properties) {
         this.config = new EverestConfig(properties);
+        this.defaultTopic = config.getString("everestmq.producer.default.topic", null);
+        this.ackPolicy = AckPolicy.valueOf(config.getString("everestmq.producer.ack.policy", "RECEIVED").toUpperCase());
+        this.batchSize = config.getInt("everestmq.producer.batch.size", 100);
+        
         String host = config.getString("everestmq.broker.host", "localhost");
         int port = config.getInt("everestmq.broker.port", 9876);
         try {
@@ -43,143 +48,65 @@ public final class EverestProducer implements AutoCloseable {
         } catch (Exception e) {
             throw new RuntimeException("Failed to connect to broker at " + host + ":" + port, e);
         }
-        this.topicName = null;
     }
 
-    public EverestProducer(ClientConnection connection, String topicName) {
-        this(connection, topicName, new Properties());
+    public EverestProducer(ClientConnection connection, String defaultTopic) {
+        this(connection, defaultTopic, new Properties());
     }
 
-    public EverestProducer(ClientConnection connection, String topicName, Properties properties) {
+    public EverestProducer(ClientConnection connection, String defaultTopic, Properties properties) {
         this.connection = connection;
-        this.topicName = topicName;
+        this.defaultTopic = defaultTopic;
         this.config = new EverestConfig(properties);
+        this.ackPolicy = AckPolicy.valueOf(config.getString("everestmq.producer.ack.policy", "RECEIVED").toUpperCase());
+        this.batchSize = config.getInt("everestmq.producer.batch.size", 100);
         this.managedConnection = false;
     }
 
     /**
-     * Sends a binary message with an optional key to the topic.
+     * Asynchronously sends a message with the configured AckPolicy.
+     * Uses batching to optimize throughput.
+     */
+    public CompletableFuture<BrokerResponse> sendAsync(String topic, byte[] key, byte[] payload) {
+        int correlationId = connection.nextCorrelationId();
+        BrokerRequest request = new BrokerRequest(correlationId, CommandType.PRODUCE, topic, -1, ackPolicy, 1, key, payload);
+        
+        CompletableFuture<BrokerResponse> future = new CompletableFuture<>();
+        connection.writeAsync(request, future);
+        
+        if (unflushedCount.incrementAndGet() >= batchSize) {
+            flush();
+        }
+        
+        return future;
+    }
+
+    public CompletableFuture<BrokerResponse> sendAsync(byte[] payload) {
+        if (defaultTopic == null) throw new IllegalStateException("Default topic not specified");
+        return sendAsync(defaultTopic, null, payload);
+    }
+
+    /**
+     * Synchronous send (for compatibility and simple use cases).
      */
     public long send(String topic, byte[] key, byte[] payload) throws EverestProducerException {
-        int maxRetries = config.getInt("everestmq.producer.retry.count", 3);
-        long retryBackoffMs = config.getLong("everestmq.producer.retry.backoff.ms", 100);
-        long requestTimeoutMs = config.getLong("everestmq.broker.request.timeout.ms", 5000);
-        
-        int attempts = 0;
-        Exception lastException = null;
-        int payloadSize = payload != null ? payload.length : 0;
-        int keySize = key != null ? key.length : 0;
-
-        while (attempts <= maxRetries) {
-            if (connection == null || !connection.isActive()) {
-                log.info("[EverestMQ][MODULE=producer][TOPIC={}] Connection lost. Attempting to reconnect...", topic);
-                try {
-                    if (managedConnection) {
-                        connection.connect();
-                    } else {
-                        throw new EverestProducerException("Shared connection is inactive");
-                    }
-                } catch (Exception e) {
-                    log.warn("[EverestMQ][MODULE=producer][TOPIC={}] Reconnection failed: {}", topic, e.getMessage());
-                    attempts++;
-                    if (attempts <= maxRetries) {
-                        try { Thread.sleep(retryBackoffMs); } catch (InterruptedException ie) { Thread.currentThread().interrupt(); throw new EverestProducerException("Send interrupted", ie); }
-                        continue;
-                    }
-                    throw new EverestProducerException("Failed to reconnect producer", e);
-                }
-            }
-
-            int correlationId = -1;
-            try {
-                correlationId = connection.nextCorrelationId();
-                log.debug("[EverestMQ][MODULE=producer][TOPIC={}][ATTEMPT={}][SIZE={}][KEY_SIZE={}][CORR_ID={}] Sending message...", 
-                        topic, attempts + 1, payloadSize, keySize, correlationId);
-                
-                BrokerRequest request = new BrokerRequest(correlationId, CommandType.PRODUCE, topic, -1, 1, key, payload);
-                BrokerResponse response = connection.send(request, requestTimeoutMs);
-
-                if (response.status() == StatusCode.OK) {
-                    log.info("[EverestMQ][MODULE=producer][TOPIC={}][OFFSET={}][CORR_ID={}] Produce success", 
-                            topic, response.offset(), correlationId);
-                    return response.offset();
-                } else {
-                    log.warn("[EverestMQ][MODULE=producer][TOPIC={}][RETRY={}][CORR_ID={}] Broker returned status: {}", 
-                            topic, attempts + 1, correlationId, response.status());
-                    attempts++;
-                    if (attempts <= maxRetries) {
-                        Thread.sleep(retryBackoffMs);
-                    }
-                }
-            } catch (Exception e) {
-                lastException = e;
-                log.warn("[EverestMQ][MODULE=producer][TOPIC={}][ERROR={}][CORR_ID={}] Send failed: {}", 
-                        topic, attempts + 1, correlationId, e.getMessage());
-                attempts++;
-                if (attempts <= maxRetries) {
-                    try {
-                        Thread.sleep(retryBackoffMs);
-                    } catch (InterruptedException ie) {
-                        Thread.currentThread().interrupt();
-                        throw new EverestProducerException("Send interrupted", ie);
-                    }
-                }
-            }
+        try {
+            BrokerResponse response = sendAsync(topic, key, payload).get(5, java.util.concurrent.TimeUnit.SECONDS);
+            if (response == null) return -1; // AckPolicy.NONE
+            return response.offset();
+        } catch (Exception e) {
+            throw new EverestProducerException("Sync send failed", e);
         }
-        throw new EverestProducerException("Failed to send message to topic " + topic + " after " + (maxRetries + 1) + " attempts.", lastException);
     }
 
-    public long send(String topic, byte[] payload) throws EverestProducerException {
-        return send(topic, null, payload);
-    }
-
-    public long send(byte[] payload) throws EverestProducerException {
-        if (topicName == null) throw new IllegalStateException("Topic name not specified");
-        return send(topicName, null, payload);
-    }
-
-    public void sendAsync(String topic, byte[] key, byte[] payload, BiConsumer<Long, Throwable> callback) {
-        CompletableFuture.supplyAsync(() -> {
-            try {
-                return send(topic, key, payload);
-            } catch (EverestProducerException e) {
-                throw new RuntimeException(e);
-            }
-        }).whenComplete((offset, ex) -> {
-            if (ex != null) {
-                callback.accept(-1L, ex.getCause() != null ? ex.getCause() : ex);
-            } else {
-                callback.accept(offset, null);
-            }
-        });
-    }
-
-    public void sendAsync(String topic, byte[] payload, BiConsumer<Long, Throwable> callback) {
-        sendAsync(topic, null, payload, callback);
-    }
-
-    public void sendAsync(byte[] payload, BiConsumer<Long, Throwable> callback) {
-        if (topicName == null) throw new IllegalStateException("Topic name not specified");
-        sendAsync(topicName, null, payload, callback);
-    }
-
-    public long sendString(String topic, String msg) throws EverestProducerException {
-        return sendString(topic, null, msg);
-    }
-
-    public long sendString(String topic, String key, String msg) throws EverestProducerException {
-        byte[] kBytes = key != null ? key.getBytes(StandardCharsets.UTF_8) : null;
-        byte[] pBytes = msg != null ? msg.getBytes(StandardCharsets.UTF_8) : null;
-        return send(topic, kBytes, pBytes);
-    }
-
-    public long sendString(String msg) throws EverestProducerException {
-        if (topicName == null) throw new IllegalStateException("Topic name not specified");
-        return sendString(topicName, null, msg);
+    public void flush() {
+        connection.flush();
+        unflushedCount.set(0);
     }
 
     @Override
     public void close() {
+        flush();
         if (managedConnection && connection != null) {
             connection.close();
         }

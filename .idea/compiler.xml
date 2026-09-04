@@ -10,6 +10,7 @@
       </profile>
     </annotationProcessing>
     <bytecodeTargetLevel>
+      <module name="Docs" target="17" />
       <module name="everestmq-broker" target="17" />
       <module name="everestmq-client" target="17" />
       <module name="everestmq-commons" target="17" />
