@@ -17,5 +17,5 @@ Thumbs.db
 .env
 
 # Docs
-*.md
+# (scratch notes only - project docs like Docs/ and a README stay tracked)
 bug-offset-jump.md
