@@ -46,7 +46,9 @@ services:
       EVERESTMQ_BROKER_PORT: "9876"
       EVERESTMQ_TOPIC: demo-topic
       EVERESTMQ_CLIENT_ID: demo-consumer
-      # Consumer offsets are stored client-side under the data dir.
+      # The consumer reads a client-side offset file from this dir at startup,
+      # but nothing writes it back yet, so it always replays from the start.
+      # See Docs/CODEBASE_GUIDE.md section 8.1.
       EVERESTMQ_DATA_DIR: /data
     volumes:
       - consumer-data:/data
